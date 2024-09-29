@@ -29,6 +29,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"unsafe"
 
 	"github.com/cilium/ebpf"
 
@@ -59,6 +60,11 @@ type BpfLoader struct {
 	workloadObj *BpfKmeshWorkload
 	bpfLogLevel *ebpf.Map
 	versionMap  *ebpf.Map
+}
+
+type versionData struct {
+	version       uint32
+	mapInMapCrc64 uint64
 }
 
 func NewBpfLoader(config *options.BpfConfig) *BpfLoader {
@@ -96,7 +102,7 @@ func (l *BpfLoader) StartAdsMode() (err error) {
 	}
 
 	l.bpfLogLevel = l.obj.SockConn.BpfLogLevel
-	ret := C.deserial_init()
+	ret := C.deserial_init(C.ulonglong(getMapInMapCrc64(l.versionMap)))
 	if ret != 0 {
 		l.Stop()
 		return fmt.Errorf("deserial_init failed:%v", ret)
@@ -173,8 +179,11 @@ func StopMda() error {
 
 func (l *BpfLoader) Stop() {
 	var err error
+	var mapInMapCrc64 uint64
 	if GetExitType() == Restart && l.config.WdsEnabled() {
-		C.deserial_uninit(true)
+		cMapInMapCrc64 := C.ulonglong(mapInMapCrc64)
+		C.deserial_uninit(true, &cMapInMapCrc64)
+		storeMapInMapCrc64(l.versionMap, mapInMapCrc64)
 		log.Infof("kmesh restart, not clean bpf map and prog")
 		return
 	}
@@ -182,14 +191,14 @@ func (l *BpfLoader) Stop() {
 	closeMap(l.versionMap)
 
 	if l.config.AdsEnabled() {
-		C.deserial_uninit(false)
+		C.deserial_uninit(false, (*C.ulonglong)(C.NULL))
 		if err = l.obj.Detach(); err != nil {
 			CleanupBpfMap()
 			log.Errorf("failed detach when stop kmesh, err:%s", err)
 			return
 		}
 	} else if l.config.WdsEnabled() {
-		C.deserial_uninit(false)
+		C.deserial_uninit(false, (*C.ulonglong)(C.NULL))
 		if err = l.workloadObj.Detach(); err != nil {
 			CleanupBpfMap()
 			log.Errorf("failed detach when stop kmesh, err:%s", err)
@@ -245,7 +254,7 @@ func NewVersionMap(config *options.BpfConfig) *ebpf.Map {
 		Name:       "kmesh_version",
 		Type:       ebpf.Array,
 		KeySize:    4,
-		ValueSize:  4,
+		ValueSize:  uint32(unsafe.Sizeof(versionData{})),
 		MaxEntries: 1,
 	}
 	m, err := ebpf.NewMap(mapSpec)
@@ -274,23 +283,47 @@ func NewVersionMap(config *options.BpfConfig) *ebpf.Map {
 
 func storeVersionInfo(versionMap *ebpf.Map) {
 	key := uint32(0)
-	var value uint32
+	var value versionData
+
+	_ = versionMap.Lookup(&key, &value)
 	hash.Reset()
 	hash.Write([]byte(version.Get().GitVersion))
-	value = hash.Sum32()
+	value.version = hash.Sum32()
 	if err := versionMap.Put(&key, &value); err != nil {
 		log.Errorf("Add Version Map failed, err is %v", err)
 	}
 }
 
 func getOldVersionFromMap(m *ebpf.Map, key uint32) uint32 {
-	var value uint32
+	var value versionData
 	err := m.Lookup(&key, &value)
 	if err != nil {
 		log.Errorf("lookup failed: %v", err)
-		return value
+		return value.version
 	}
-	return value
+	return 0
+}
+
+func storeMapInMapCrc64(m *ebpf.Map, crc64 uint64) {
+	key := uint32(0)
+	var val versionData
+
+	_ = m.Lookup(&key, &val)
+	val.mapInMapCrc64 = crc64
+	if err := m.Put(&key, &val); err != nil {
+		log.Errorf("Update crc64 failed: %v", err)
+	}
+}
+
+func getMapInMapCrc64(m *ebpf.Map) uint64 {
+	key := uint32(0)
+	var val versionData
+
+	if err := m.Lookup(&key, &val); err != nil {
+		log.Errorf("getMapInMapCrc64 failed: %v", err)
+		return 0
+	}
+	return val.mapInMapCrc64
 }
 
 func recoverVersionMap(pinPath string) *ebpf.Map {

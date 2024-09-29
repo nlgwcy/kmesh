@@ -32,8 +32,7 @@ void deserial_free_elem(void *value);
 void deserial_free_elem_list(struct element_list_node *head);
 int deserial_delete_elem(void *key, const void *msg_desciptor);
 
-int deserial_init();
-void deserial_uninit(bool persist);
-int inner_map_mng_persist();
+int deserial_init(unsigned long long map_in_map_crc64);
+void deserial_uninit(bool persist, unsigned long long *map_in_map_crc64);
 
 #endif /* __DESERIALIZATION_TO_BPF_MAP_H__ */

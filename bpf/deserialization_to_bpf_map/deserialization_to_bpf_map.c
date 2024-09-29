@@ -19,6 +19,7 @@
 
 #include "deserialization_to_bpf_map.h"
 #include "../../config/kmesh_marcos_def.h"
+#include "crc.h"
 
 #define PRINTF(fmt, args...)                                                                                           \
     do {                                                                                                               \
@@ -100,6 +101,7 @@ struct task_contex {
 #define MAGIC_NUMBER                     0xb809b8c3
 
 struct inner_map_persist_stat {
+    int map_fd;
     unsigned char used : 1;
     unsigned char allocated : 1;
     unsigned char resv : 6;
@@ -1599,10 +1601,53 @@ void inner_map_batch_delete()
     return;
 }
 
-void deserial_uninit(bool persist)
+int inner_map_mng_persist(unsigned long long *crc64)
+{
+    int i, size, stat_size;
+    FILE *f = NULL;
+    struct persist_info *p = NULL;
+
+    if (g_inner_map_mng.init == 0)
+        return 0;
+
+    stat_size = sizeof(struct inner_map_persist_stat) * (g_inner_map_mng.max_allocated_idx + 1);
+    size = sizeof(struct persist_info) + stat_size;
+    p = (struct persist_info *)malloc(size);
+    if (!p) {
+        LOG_ERR("inner_map_mng_persist malloc failed.\n");
+        return -1;
+    }
+
+    p->magic = MAGIC_NUMBER;
+    p->allocated_cnt = g_inner_map_mng.allocated_cnt;
+    p->used_cnt = g_inner_map_mng.used_cnt;
+    p->max_allocated_idx = g_inner_map_mng.max_allocated_idx;
+    for (i = 0; i <= g_inner_map_mng.max_allocated_idx; i++) {
+        p->inner_map_stat[i].map_fd = g_inner_map_mng.inner_maps[i].map_fd;
+        p->inner_map_stat[i].used = g_inner_map_mng.inner_maps[i].used;
+        p->inner_map_stat[i].allocated = g_inner_map_mng.inner_maps[i].allocated;
+    }
+
+    f = fopen(MAP_IN_MAP_MNG_PERSIST_FILE_PATH, "wb");
+    if (f == NULL) {
+        LOG_ERR("inner_map_mng_persist fopen failed:%d.\n", errno);
+        free(p);
+        return -1;
+    }
+
+    (void)fwrite(p, sizeof(unsigned char), size, f);
+    fclose(f);
+
+    if (crc64)
+        *crc64 = calculateCrc64((const unsigned char *)p->inner_map_stat, stat_size);
+    LOG_INFO("inner_map_mng_persist succeed.\n");
+    return 0;
+}
+
+void deserial_uninit(bool persist, unsigned long long *crc64)
 {
     if (persist)
-        inner_map_mng_persist();
+        inner_map_mng_persist(crc64);
     else
         remove(MAP_IN_MAP_MNG_PERSIST_FILE_PATH);
 
@@ -1713,81 +1758,28 @@ int inner_map_elastic_scaling()
     return pthread_create(&tid, NULL, inner_map_elastic_scaling_task, NULL);
 }
 
-int inner_map_mng_persist()
+void inner_map_mng_restore_by_persist_stat(struct persist_info *p, struct inner_map_persist_stat *stat)
 {
-    int i, size;
-    FILE *f = NULL;
-    struct persist_info *p = NULL;
-
-    if (g_inner_map_mng.init == 0)
-        return 0;
-
-    size =
-        sizeof(struct persist_info) + sizeof(struct inner_map_persist_stat) * (g_inner_map_mng.max_allocated_idx + 1);
-    p = (struct persist_info *)malloc(size);
-    if (!p) {
-        LOG_ERR("inner_map_mng_persist malloc failed.\n");
-        return -1;
-    }
-
-    p->magic = MAGIC_NUMBER;
-    p->allocated_cnt = g_inner_map_mng.allocated_cnt;
-    p->used_cnt = g_inner_map_mng.used_cnt;
-    p->max_allocated_idx = g_inner_map_mng.max_allocated_idx;
-    for (i = 0; i <= g_inner_map_mng.max_allocated_idx; i++) {
-        p->inner_map_stat[i].used = g_inner_map_mng.inner_maps[i].used;
-        p->inner_map_stat[i].allocated = g_inner_map_mng.inner_maps[i].allocated;
-    }
-
-    f = fopen(MAP_IN_MAP_MNG_PERSIST_FILE_PATH, "wb");
-    if (f == NULL) {
-        LOG_ERR("inner_map_mng_persist fopen failed:%d.\n", errno);
-        free(p);
-        return -1;
-    }
-
-    (void)fwrite(p, sizeof(unsigned char), size, f);
-    fclose(f);
-    LOG_INFO("inner_map_mng_persist succeed.\n");
-    return 0;
-}
-
-int inner_map_mng_restore_by_persist_stat(struct persist_info *p, struct inner_map_persist_stat *stat)
-{
-    int i = 0;
-    unsigned int map_fd = 0;
-    unsigned int *key = NULL;
-    unsigned int *pre_key = NULL;
-
-    while (bpf_map_get_next_key(g_inner_map_mng.outter_fd, pre_key, &key) == 0 && i <= p->max_allocated_idx) {
-        if (bpf_map_lookup_elem(g_inner_map_mng.outter_fd, &key, &map_fd) != 0) {
-            i++;
-            continue;
-        }
-
-        if ((map_fd == 0 && stat->allocated) || (map_fd != 0 && stat->allocated == 0)) {
-            LOG_ERR("restore_by_persist_stat inconsistent %d: %d-%d\n", i, map_fd, stat->allocated);
-            return -1;
-        }
-
-        g_inner_map_mng.inner_maps[i].map_fd = map_fd;
+    int i;
+    for (i = 0; i <= p->max_allocated_idx; i++) {
+        g_inner_map_mng.inner_maps[i].map_fd = stat[i].map_fd;
         g_inner_map_mng.inner_maps[i].used = stat[i].used;
         g_inner_map_mng.inner_maps[i].allocated = stat[i].allocated;
-        i++;
     }
 
     g_inner_map_mng.used_cnt = p->used_cnt;
     g_inner_map_mng.allocated_cnt = p->allocated_cnt;
     g_inner_map_mng.max_allocated_idx = p->max_allocated_idx;
-    return 0;
+    return;
 }
 
-int inner_map_restore()
+int inner_map_restore(unsigned long long map_in_map_crc64)
 {
-    int ret, size;
+    int size;
     int read_size;
     FILE *f = NULL;
     struct persist_info p;
+    unsigned long long cur_crc64;
     struct inner_map_persist_stat *stat = NULL;
 
     f = fopen(MAP_IN_MAP_MNG_PERSIST_FILE_PATH, "rb");
@@ -1797,33 +1789,39 @@ int inner_map_restore()
     read_size = (int)fread(&p, sizeof(unsigned char), sizeof(struct persist_info), f);
     if (read_size != sizeof(struct persist_info) || p.magic != MAGIC_NUMBER) {
         LOG_WARN("inner_map_restore invalid size:%d/%lu\n", read_size, sizeof(struct persist_info));
-        fclose(f);
-        return 0;
+        goto out;
     }
 
     size = sizeof(struct inner_map_persist_stat) * (p.max_allocated_idx + 1);
     stat = (struct inner_map_persist_stat *)malloc(size);
     if (!stat) {
         LOG_ERR("inner_map_restore alloc failed.\n");
-        fclose(f);
-        return -1;
+        goto out;
     }
 
     read_size = (int)fread(stat, sizeof(struct inner_map_persist_stat), (p.max_allocated_idx + 1), f);
     if (read_size != size) {
         LOG_WARN("inner_map_restore invalid size:%d/%d\n", read_size, size);
-        fclose(f);
-        free(stat);
-        return 0;
+        goto out;
     }
 
-    ret = inner_map_mng_restore_by_persist_stat(&p, stat);
-    free(stat);
-    fclose(f);
-    return ret;
+    // verify crc64
+    cur_crc64 = calculateCrc64((const unsigned char *)stat, size);
+    if (cur_crc64 != map_in_map_crc64) {
+        LOG_ERR("crc64 verify failed: 0x%llx - 0x%llx\n", cur_crc64, map_in_map_crc64);
+        goto out;
+    }
+
+    inner_map_mng_restore_by_persist_stat(&p, stat);
+out:
+    if (stat)
+        free(stat);
+    if (f)
+        fclose(f);
+    return 0;
 }
 
-int deserial_init()
+int deserial_init(unsigned long long map_in_map_crc64)
 {
     int ret = 0;
 
@@ -1837,7 +1835,7 @@ int deserial_init()
         if (ret)
             break;
 
-        ret = inner_map_restore();
+        ret = inner_map_restore(map_in_map_crc64);
         if (ret)
             break;
 
@@ -1851,7 +1849,7 @@ int deserial_init()
     } while (0);
 
     if (ret) {
-        deserial_uninit(false);
+        deserial_uninit(false, NULL);
         return ret;
     }
     g_inner_map_mng.init = 1;

@@ -12,15 +12,22 @@ typedef enum { MAP_TYPE_64, MAP_TYPE_192, MAP_TYPE_296, MAP_TYPE_1600, MAP_TYPE_
 #define MAP_GET_TYPE(idx)                (__u8)((__u32)(idx) >> 24)
 #define MAP_GET_INDEX(idx)               (__u32)((__u32)(idx)&0xFFFFFF)
 #define MAP_GEN_OUTER_KEY(map_type, pos) ((__u32)((((__u8)(map_type)&0xFF) << 24) + ((__u32)(pos)&0xFFFFFF)))
+#define OFFSET_PTR(ptr, offset)          ((void *)((char *)(ptr) + (offset)))
 
+struct map_val_meta {
+    unsigned int next_key;
+};
+
+#define MAP_VAL_META_SIZE sizeof(struct map_val_meta)
 #define MAP_VAL_SIZE_64   64
 #define MAP_VAL_SIZE_192  192
 #define MAP_VAL_SIZE_296  296
 #define MAP_VAL_SIZE_1600 1600
 #define MAP_MAX_ENTRIES   1000000
 
-#define MAP_VAL_STR_SIZE    MAP_VAL_SIZE_192
-#define MAP_VAL_REPEAT_SIZE MAP_VAL_SIZE_1600
+#define MAP_VAL_STR_SIZE       MAP_VAL_SIZE_192
+#define MAP_VAL_REPEAT_SIZE    MAP_VAL_SIZE_1600
+#define MAP_VAL_PER_REPEAT_CNT ((MAP_VAL_REPEAT_SIZE) / sizeof(void *))
 
 #define SET_BIT(bitmap, n) ((bitmap)[(n) / 8] |= (1U << ((n) % 8)))
 

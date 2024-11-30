@@ -116,8 +116,8 @@ static int construct_tuple_key(struct xdp_md *ctx, struct bpf_sock_tuple *tuple_
 
 static int match_dst_ports(Istio__Security__Match *match, struct xdp_info *info, struct bpf_sock_tuple *tuple_info)
 {
-    __u32 *notPorts = NULL;
-    __u32 *ports = NULL;
+    __u32 *notPorts = NULL, *notPort = NULL;
+    __u32 *ports = NULL, *port = NULL;
     __u32 i;
 
     if (match->n_destination_ports == 0 && match->n_not_destination_ports == 0) {
@@ -136,14 +136,19 @@ static int match_dst_ports(Istio__Security__Match *match, struct xdp_info *info,
             if (i >= match->n_not_destination_ports) {
                 break;
             }
+
+            notPort = GET_REPEAT_PTR(&notPorts, __u32, i);
+            if (!notPort)
+                break;
+
             if (info->iph->version == 4) {
-                if (bpf_htons(notPorts[i]) == tuple_info->ipv4.dport) {
-                    BPF_LOG(DEBUG, AUTH, "port %u in not_destination_ports, unmatched", notPorts[i]);
+                if (bpf_htons(*notPort) == tuple_info->ipv4.dport) {
+                    BPF_LOG(DEBUG, AUTH, "port %u in not_destination_ports, unmatched", *notPort);
                     return UNMATCHED;
                 }
             } else {
-                if (bpf_htons(notPorts[i]) == tuple_info->ipv6.dport) {
-                    BPF_LOG(DEBUG, AUTH, "port %u in not_destination_ports, unmatched", notPorts[i]);
+                if (bpf_htons(*notPort) == tuple_info->ipv6.dport) {
+                    BPF_LOG(DEBUG, AUTH, "port %u in not_destination_ports, unmatched", *notPort);
                     return UNMATCHED;
                 }
             }
@@ -165,14 +170,19 @@ static int match_dst_ports(Istio__Security__Match *match, struct xdp_info *info,
         if (i >= match->n_destination_ports) {
             break;
         }
+
+        port = GET_REPEAT_PTR(&ports, __u32, i);
+        if (!port)
+            break;
+
         if (info->iph->version == 4) {
-            if (bpf_htons(ports[i]) == tuple_info->ipv4.dport) {
-                BPF_LOG(INFO, AUTH, "port %u in destination_ports, matched", ports[i]);
+            if (bpf_htons(*port) == tuple_info->ipv4.dport) {
+                BPF_LOG(INFO, AUTH, "port %u in destination_ports, matched", *port);
                 return MATCHED;
             }
         } else {
-            if (bpf_htons(ports[i]) == tuple_info->ipv6.dport) {
-                BPF_LOG(INFO, AUTH, "port %u in destination_ports, matched", ports[i]);
+            if (bpf_htons(*port) == tuple_info->ipv6.dport) {
+                BPF_LOG(INFO, AUTH, "port %u in destination_ports, matched", *port);
                 return MATCHED;
             }
         }
@@ -193,7 +203,7 @@ static int match_check(Istio__Security__Match *match, struct xdp_info *info, str
 
 static int clause_match_check(Istio__Security__Clause *cl, struct xdp_info *info, struct bpf_sock_tuple *tuple_info)
 {
-    void *matchsPtr = NULL;
+    void *matchsPtr = NULL, *matchPtr = NULL;
     Istio__Security__Match *match = NULL;
     __u32 i;
 
@@ -210,7 +220,12 @@ static int clause_match_check(Istio__Security__Clause *cl, struct xdp_info *info
         if (i >= cl->n_matches) {
             break;
         }
-        match = (Istio__Security__Match *)KMESH_GET_PTR_VAL((void *)*((__u64 *)matchsPtr + i), Istio__Security__Match);
+
+        matchPtr = GET_REPEAT_PTR(&matchsPtr, Istio__Security__Match *, i);
+        if (!matchPtr)
+            break;
+
+        match = (Istio__Security__Match *)KMESH_GET_PTR_VAL((void *)*(matchPtr), Istio__Security__Match);
         if (!match) {
             continue;
         }
@@ -224,7 +239,7 @@ static int clause_match_check(Istio__Security__Clause *cl, struct xdp_info *info
 
 static int rule_match_check(Istio__Security__Rule *rule, struct xdp_info *info, struct bpf_sock_tuple *tuple_info)
 {
-    void *clausesPtr = NULL;
+    void *clausesPtrs = NULL, *clausePtr = NULL;
     Istio__Security__Clause *clause = NULL;
     __u32 i;
 
@@ -232,8 +247,8 @@ static int rule_match_check(Istio__Security__Rule *rule, struct xdp_info *info, 
         return MATCHED;
     }
     // Clauses are AND-ed.
-    clausesPtr = KMESH_GET_PTR_VAL(rule->clauses, void *);
-    if (!clausesPtr) {
+    clausesPtrs = KMESH_GET_PTR_VAL(rule->clauses, void *);
+    if (!clausesPtrs) {
         BPF_LOG(ERR, AUTH, "failed to get clauses from rule\n");
         return UNMATCHED;
     }
@@ -243,8 +258,13 @@ static int rule_match_check(Istio__Security__Rule *rule, struct xdp_info *info, 
         if (i >= rule->n_clauses) {
             break;
         }
+
+        clausePtr = GET_REPEAT_PTR(&clausesPtrs, Istio__Security__Clause *, i);
+        if (!clausePtr)
+            break;
+
         clause =
-            (Istio__Security__Clause *)KMESH_GET_PTR_VAL((void *)*((__u64 *)clausesPtr + i), Istio__Security__Clause);
+            (Istio__Security__Clause *)KMESH_GET_PTR_VAL((void *)*(clausePtr), Istio__Security__Clause);
         if (!clause) {
             continue;
         }
@@ -326,7 +346,7 @@ int rule_check(struct xdp_md *ctx)
     struct match_context *match_ctx;
     struct bpf_sock_tuple tuple_key = {0};
     struct xdp_info info = {0};
-    void *rulesPtr;
+    void *rulesPtr, *rulePtr = NULL;
     __u64 rule_addr;
     void *rule;
     int ret;
@@ -356,7 +376,12 @@ int rule_check(struct xdp_md *ctx)
             BPF_LOG(ERR, AUTH, "rulesPtr is null");
             return XDP_PASS;
         }
-        if (bpf_probe_read_kernel(&rule_addr, sizeof(rule_addr), &rulesPtr[i]) != 0) {
+
+        rulePtr = GET_REPEAT_PTR(&rulesPtr, Istio__Security__Rule *, i);
+        if (!rulePtr)
+            return XDP_PASS;
+
+        if (bpf_probe_read_kernel(&rule_addr, sizeof(rule_addr), &rulePtr) != 0) {
             BPF_LOG(ERR, AUTH, "failed to read rule address at index %d", i);
             continue;
         }

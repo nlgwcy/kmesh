@@ -31,7 +31,7 @@ static inline int
 virtual_host_match_check(Route__VirtualHost *virt_host, address_t *addr, ctx_buff_t *ctx, struct bpf_mem_ptr *host)
 {
     int i;
-    void *domains = NULL;
+    void *domains = NULL, *domain_ptr = NULL;
     void *domain = NULL;
     void *ptr;
     __u32 ptr_length;
@@ -57,7 +57,11 @@ virtual_host_match_check(Route__VirtualHost *virt_host, address_t *addr, ctx_buf
             break;
         }
 
-        domain = KMESH_GET_PTR_VAL((void *)*((__u64 *)domains + i), char *);
+        domain_ptr = GET_REPEAT_PTR(&domains, char *, i);
+        if (!domain_ptr)
+            break;
+
+        domain = KMESH_GET_PTR_VAL((void *)*((__u64 *)domain_ptr), char *);
         if (!domain)
             continue;
 
@@ -90,7 +94,7 @@ static inline Route__VirtualHost *
 virtual_host_match(Route__RouteConfiguration *route_config, address_t *addr, ctx_buff_t *ctx)
 {
     int i;
-    void *ptrs = NULL;
+    void *ptrs = NULL, *ptr = NULL;
     Route__VirtualHost *virt_host = NULL;
     Route__VirtualHost *virt_host_allow_any = NULL;
     char host_key[5] = {'H', 'o', 's', 't', '\0'};
@@ -118,7 +122,11 @@ virtual_host_match(Route__RouteConfiguration *route_config, address_t *addr, ctx
             break;
         }
 
-        virt_host = KMESH_GET_PTR_VAL((void *)*((__u64 *)ptrs + i), Route__VirtualHost);
+        ptr = GET_REPEAT_PTR(&ptrs, Route__VirtualHost *, i);
+        if (!ptr)
+            break;
+
+        virt_host = KMESH_GET_PTR_VAL((void *)*((__u64 *)ptr), Route__VirtualHost);
         if (!virt_host)
             continue;
 
@@ -150,7 +158,7 @@ static inline bool check_header_value_match(char *target, struct bpf_mem_ptr *he
 static inline bool check_headers_match(Route__RouteMatch *match)
 {
     int i;
-    void *ptrs = NULL;
+    void *ptrs = NULL, *ptr = NULL;
     char *header_name = NULL;
     char *config_header_value = NULL;
     struct bpf_mem_ptr *msg_header = NULL;
@@ -171,7 +179,12 @@ static inline bool check_headers_match(Route__RouteMatch *match)
         if (i >= match->n_headers) {
             break;
         }
-        header_match = (Route__HeaderMatcher *)KMESH_GET_PTR_VAL((void *)*((__u64 *)ptrs + i), Route__HeaderMatcher);
+
+        ptr = GET_REPEAT_PTR(&ptrs, Route__HeaderMatcher *, i);
+        if (!ptr)
+            break;
+
+        header_match = (Route__HeaderMatcher *)KMESH_GET_PTR_VAL((void *)*((__u64 *)ptr), Route__HeaderMatcher);
         if (!header_match) {
             BPF_LOG(ERR, ROUTER_CONFIG, "failed to get match headers in route match\n");
             return false;
@@ -252,7 +265,7 @@ static inline Route__Route *
 virtual_host_route_match(Route__VirtualHost *virt_host, address_t *addr, ctx_buff_t *ctx, struct bpf_mem_ptr *msg)
 {
     int i;
-    void *ptrs = NULL;
+    void *ptrs = NULL, *ptr = NULL;
     Route__Route *route = NULL;
 
     if (virt_host->n_routes <= 0 || virt_host->n_routes > KMESH_PER_ROUTE_NUM) {
@@ -271,7 +284,11 @@ virtual_host_route_match(Route__VirtualHost *virt_host, address_t *addr, ctx_buf
             break;
         }
 
-        route = (Route__Route *)KMESH_GET_PTR_VAL((void *)*((__u64 *)ptrs + i), Route__Route);
+        ptr = GET_REPEAT_PTR(&ptrs, Route__Route *, i);
+        if (!ptr)
+            break;
+
+        route = (Route__Route *)KMESH_GET_PTR_VAL((void *)*((__u64 *)ptr), Route__Route);
         if (!route)
             continue;
 
@@ -283,7 +300,7 @@ virtual_host_route_match(Route__VirtualHost *virt_host, address_t *addr, ctx_buf
 
 static inline char *select_weight_cluster(Route__RouteAction *route_act)
 {
-    void *ptr = NULL;
+    void *ptrs = NULL, *ptr = NULL;
     Route__WeightedCluster *weightedCluster = NULL;
     Route__ClusterWeight *route_cluster_weight = NULL;
     int32_t select_value;
@@ -293,8 +310,8 @@ static inline char *select_weight_cluster(Route__RouteAction *route_act)
     if (!weightedCluster) {
         return NULL;
     }
-    ptr = KMESH_GET_PTR_VAL(weightedCluster->clusters, void *);
-    if (!ptr) {
+    ptrs = KMESH_GET_PTR_VAL(weightedCluster->clusters, void *);
+    if (!ptrs) {
         return NULL;
     }
     select_value = (int)(bpf_get_prandom_u32() % 100);
@@ -302,8 +319,13 @@ static inline char *select_weight_cluster(Route__RouteAction *route_act)
         if (i >= weightedCluster->n_clusters) {
             break;
         }
+
+        ptr = GET_REPEAT_PTR(&ptrs, Route__ClusterWeight *, i);
+        if (!ptr)
+            break;
+
         route_cluster_weight =
-            (Route__ClusterWeight *)KMESH_GET_PTR_VAL((void *)*((__u64 *)ptr + i), Route__ClusterWeight);
+            (Route__ClusterWeight *)KMESH_GET_PTR_VAL((void *)*((__u64 *)ptr), Route__ClusterWeight);
         if (!route_cluster_weight) {
             return NULL;
         }

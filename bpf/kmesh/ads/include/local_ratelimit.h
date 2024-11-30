@@ -160,7 +160,7 @@ static inline int Local_rate_limit__filter__match(const Listener__Filter *filter
 static inline int
 Local_rate_limit__filter_chain__match(const Listener__FilterChain *filter_chain, Listener__Filter **filter_ptr)
 {
-    void *ptrs = NULL;
+    void *ptrs = NULL, *ptr = NULL;
     Listener__Filter *filter = NULL;
 
     if (!filter_ptr) {
@@ -185,7 +185,11 @@ Local_rate_limit__filter_chain__match(const Listener__FilterChain *filter_chain,
             break;
         }
 
-        filter = (Listener__Filter *)KMESH_GET_PTR_VAL((void *)*((__u64 *)ptrs + i), Listener__Filter);
+        ptr = GET_REPEAT_PTR(&ptrs, Listener__Filter *, i);
+        if (!ptr)
+            break;
+
+        filter = (Listener__Filter *)KMESH_GET_PTR_VAL((void *)*((__u64 *)ptr), Listener__Filter);
         if (!filter) {
             continue;
         }

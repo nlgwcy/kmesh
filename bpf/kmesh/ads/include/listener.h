@@ -59,7 +59,7 @@ static inline int listener_filter_chain_match(
     __u64 *filter_chain_idx)
 {
     int i;
-    void *ptrs = NULL;
+    void *ptrs = NULL, *ptr = NULL;
     Listener__FilterChain *filter_chain = NULL;
 
     if (listener->n_filter_chains == 0 || listener->n_filter_chains > KMESH_PER_FILTER_CHAIN_NUM) {
@@ -79,7 +79,11 @@ static inline int listener_filter_chain_match(
             break;
         }
 
-        filter_chain = (Listener__FilterChain *)KMESH_GET_PTR_VAL((void *)*((__u64 *)ptrs + i), Listener__FilterChain);
+        ptr = GET_REPEAT_PTR(&ptrs, Listener__FilterChain *, i);
+        if (!ptr)
+            break;
+
+        filter_chain = (Listener__FilterChain *)KMESH_GET_PTR_VAL((void *)*((__u64 *)ptr), Listener__FilterChain);
         if (!filter_chain) {
             continue;
         }

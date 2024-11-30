@@ -39,7 +39,7 @@ static inline int filter_chain_filter_match(
     Listener__Filter **filter_ptr,
     __u64 *filter_ptr_idx)
 {
-    void *ptrs = NULL;
+    void *ptrs = NULL, *ptr = NULL;
     Listener__Filter *filter = NULL;
 
     if (!filter_ptr || !filter_ptr_idx) {
@@ -66,7 +66,11 @@ static inline int filter_chain_filter_match(
             break;
         }
 
-        filter = (Listener__Filter *)KMESH_GET_PTR_VAL((void *)*((__u64 *)ptrs + i), Listener__Filter);
+        ptr = GET_REPEAT_PTR(&ptrs, Listener__Filter *, i);
+        if (!ptr)
+            break;
+
+        filter = (Listener__Filter *)KMESH_GET_PTR_VAL((void *)*((__u64 *)ptr), Listener__Filter);
         if (!filter) {
             continue;
         }

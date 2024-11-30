@@ -58,7 +58,7 @@ struct {
 struct {
     __uint(type, BPF_MAP_TYPE_HASH);
     __uint(key_size, sizeof(__u32));
-    __uint(value_size, MAP_VAL_SIZE_64);
+    __uint(value_size, MAP_VAL_SIZE_64 + MAP_VAL_META_SIZE);
     __uint(max_entries, MAP_MAX_ENTRIES);
     __uint(map_flags, BPF_F_NO_PREALLOC);
 } kmesh_map64 SEC(".maps");
@@ -66,7 +66,7 @@ struct {
 struct {
     __uint(type, BPF_MAP_TYPE_HASH);
     __uint(key_size, sizeof(__u32));
-    __uint(value_size, MAP_VAL_SIZE_192);
+    __uint(value_size, MAP_VAL_SIZE_192 + MAP_VAL_META_SIZE);
     __uint(max_entries, MAP_MAX_ENTRIES);
     __uint(map_flags, BPF_F_NO_PREALLOC);
 } kmesh_map192 SEC(".maps");
@@ -74,7 +74,7 @@ struct {
 struct {
     __uint(type, BPF_MAP_TYPE_HASH);
     __uint(key_size, sizeof(__u32));
-    __uint(value_size, MAP_VAL_SIZE_296);
+    __uint(value_size, MAP_VAL_SIZE_296 + MAP_VAL_META_SIZE);
     __uint(max_entries, MAP_MAX_ENTRIES);
     __uint(map_flags, BPF_F_NO_PREALLOC);
 } kmesh_map296 SEC(".maps");
@@ -82,7 +82,7 @@ struct {
 struct {
     __uint(type, BPF_MAP_TYPE_HASH);
     __uint(key_size, sizeof(__u32));
-    __uint(value_size, MAP_VAL_SIZE_1600);
+    __uint(value_size, MAP_VAL_SIZE_1600 + MAP_VAL_META_SIZE);
     __uint(max_entries, MAP_MAX_ENTRIES);
     __uint(map_flags, BPF_F_NO_PREALLOC);
 } kmesh_map1600 SEC(".maps");
@@ -218,6 +218,48 @@ static inline void *get_ptr_val_from_map(void *map, __u8 map_type, const void *p
             val_tmp = get_ptr_val_from_map(&kmesh_map1600, MAP_TYPE_1600, ptr);                                        \
         else                                                                                                           \
             val_tmp = NULL;                                                                                            \
+        val_tmp;                                                                                                       \
+    })
+
+// static void *get_repeat_ptr(void **repeat_ptr_addr, unsigned int val_size, unsigned int iter)
+// {
+//     unsigned int i = iter % val_size;
+//     void *ptr = NULL;
+//     void *repeat_ptr = NULL;
+//     struct map_val_meta *meta = NULL;
+
+//     if (!repeat_ptr_addr || !(*repeat_ptr_addr) || val_size > 8)
+//         return NULL;
+
+//     repeat_ptr = *repeat_ptr_addr;
+//     if (iter && i == 0) {
+//         meta = (struct map_val_meta *)OFFSET_PTR(repeat_ptr, MAP_VAL_REPEAT_SIZE);
+//         repeat_ptr = kmesh_map_lookup_elem(&kmesh_map1600, &(meta->next_key));
+//         *repeat_ptr_addr = repeat_ptr;
+//     }
+//     if (!repeat_ptr)
+//         return NULL;
+
+//     return (void *)((char *)repeat_ptr + i * val_size);
+// }
+
+#define GET_REPEAT_PTR(repeat_ptr_addr, type, iter)                                                                    \
+    ({                                                                                                                 \
+        void *val_tmp = NULL;                                                                                          \
+        unsigned int i = (iter) % sizeof(type);                                                                        \
+        void *ptr = NULL;                                                                                              \
+        void *repeat_ptr = *(repeat_ptr_addr);                                                                         \
+        struct map_val_meta *meta = NULL;                                                                              \
+        repeat_ptr = *(repeat_ptr_addr);                                                                               \
+        if ((iter) && i == 0) {                                                                                        \
+            meta = (struct map_val_meta *)OFFSET_PTR(repeat_ptr, MAP_VAL_REPEAT_SIZE);                                 \
+            repeat_ptr = kmesh_map_lookup_elem(&kmesh_map1600, &(meta->next_key));                                     \
+            *(repeat_ptr_addr) = repeat_ptr;                                                                           \
+        }                                                                                                              \
+        if (!repeat_ptr)                                                                                               \
+            val_tmp = NULL;                                                                                            \
+        else                                                                                                           \
+            val_tmp = (void *)((char *)repeat_ptr + i * sizeof(type));                                                 \
         val_tmp;                                                                                                       \
     })
 

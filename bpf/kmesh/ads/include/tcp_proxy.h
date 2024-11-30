@@ -10,7 +10,7 @@
 
 static inline char *select_tcp_weight_cluster(const Filter__TcpProxy *tcpProxy)
 {
-    void *clusters = NULL;
+    void *clusters = NULL, *cluster_ptr = NULL;
     Filter__TcpProxy__WeightedCluster *weightedClusters = NULL;
     Filter__TcpProxy__WeightedCluster__ClusterWeight *cluster_weight = NULL;
     int32_t select_value;
@@ -33,8 +33,13 @@ static inline char *select_tcp_weight_cluster(const Filter__TcpProxy *tcpProxy)
         if (i >= weightedClusters->n_clusters) {
             break;
         }
+
+        cluster_ptr = GET_REPEAT_PTR(&clusters, Filter__TcpProxy__WeightedCluster__ClusterWeight *, i);
+        if (!cluster_ptr)
+            break;
+
         cluster_weight = (Filter__TcpProxy__WeightedCluster__ClusterWeight *)KMESH_GET_PTR_VAL(
-            (void *)*((__u64 *)clusters + i), Filter__TcpProxy__WeightedCluster__ClusterWeight);
+            (void *)*((__u64 *)cluster_ptr), Filter__TcpProxy__WeightedCluster__ClusterWeight);
         if (!cluster_weight) {
             return NULL;
         }

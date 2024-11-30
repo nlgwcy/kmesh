@@ -91,7 +91,7 @@ static inline int
 cluster_add_endpoints(const Endpoint__LocalityLbEndpoints *lb_ep, struct cluster_endpoints *cluster_eps)
 {
     __u32 i;
-    void *ep_ptrs = NULL;
+    void *ep_ptrs = NULL, *ep_ptr = NULL;
 
     ep_ptrs = KMESH_GET_PTR_VAL(lb_ep->lb_endpoints, void *);
     if (!ep_ptrs)
@@ -102,8 +102,11 @@ cluster_add_endpoints(const Endpoint__LocalityLbEndpoints *lb_ep, struct cluster
         if (i >= lb_ep->n_lb_endpoints || cluster_eps->ep_num >= KMESH_PER_ENDPOINT_NUM)
             break;
 
+        ep_ptr = GET_REPEAT_PTR(&ep_ptrs, __u64, i);
+        if (!ep_ptr)
+            return -1;
         /* store ep identity */
-        cluster_eps->ep_identity[cluster_eps->ep_num++] = (__u64) * ((__u64 *)ep_ptrs + i);
+        cluster_eps->ep_identity[cluster_eps->ep_num++] = *(__u64 *)ep_ptr;
     }
     return 0;
 }
@@ -112,7 +115,7 @@ static inline __u32 cluster_get_endpoints_num(const Endpoint__ClusterLoadAssignm
 {
     __u32 i;
     __u32 num = 0;
-    void *ptrs = NULL;
+    void *ptrs = NULL, *ptr = NULL;
     Endpoint__LocalityLbEndpoints *lb_ep = NULL;
 
     ptrs = KMESH_GET_PTR_VAL(cla->endpoints, void *);
@@ -125,8 +128,12 @@ static inline __u32 cluster_get_endpoints_num(const Endpoint__ClusterLoadAssignm
             break;
         }
 
-        lb_ep = (Endpoint__LocalityLbEndpoints *)KMESH_GET_PTR_VAL(
-            (void *)*((__u64 *)ptrs + i), Endpoint__LocalityLbEndpoints);
+        ptr = GET_REPEAT_PTR(&ptrs, Endpoint__LocalityLbEndpoints *, i);
+        if (!ptr)
+            break;
+
+        lb_ep =
+            (Endpoint__LocalityLbEndpoints *)KMESH_GET_PTR_VAL((void *)*((__u64 *)ptr), Endpoint__LocalityLbEndpoints);
         if (!lb_ep)
             continue;
 
@@ -139,7 +146,7 @@ static inline int cluster_init_endpoints(const char *cluster_name, const Endpoin
 {
     __u32 i;
     int ret = 0;
-    void *ptrs = NULL;
+    void *ptrs = NULL, *ptr = NULL;
     Endpoint__LocalityLbEndpoints *ep = NULL;
     /* A percpu array map is added to store cluster eps data.
      * The reason for using percpu array map is that a alarge value exceeds
@@ -164,8 +171,11 @@ static inline int cluster_init_endpoints(const char *cluster_name, const Endpoin
         if (i >= cla->n_endpoints)
             break;
 
-        ep = (Endpoint__LocalityLbEndpoints *)KMESH_GET_PTR_VAL(
-            (void *)*((__u64 *)ptrs + i), Endpoint__LocalityLbEndpoints);
+        ptr = GET_REPEAT_PTR(&ptrs, Endpoint__LocalityLbEndpoints *, i);
+        if (!ptr)
+            break;
+
+        ep = (Endpoint__LocalityLbEndpoints *)KMESH_GET_PTR_VAL((void *)*((__u64 *)ptr), Endpoint__LocalityLbEndpoints);
         if (!ep)
             continue;
 
@@ -182,7 +192,7 @@ cluster_check_endpoints(const struct cluster_endpoints *eps, const Endpoint__Clu
 {
     /* 0 -- failed 1 -- succeed */
     __u32 i;
-    void *ptrs = NULL;
+    void *ptrs = NULL, *ptr = NULL;
     __u32 lb_num = cluster_get_endpoints_num(cla);
 
     if (!eps || eps->ep_num != lb_num)
@@ -198,7 +208,11 @@ cluster_check_endpoints(const struct cluster_endpoints *eps, const Endpoint__Clu
             break;
         }
 
-        if (eps->ep_identity[i] != (__u64)_(ptrs + i))
+        ptr = GET_REPEAT_PTR(&ptrs, __u64, i);
+        if (!ptr)
+            break;
+
+        if (eps->ep_identity[i] != (__u64)_(ptr))
             return 0;
     }
     return 1;

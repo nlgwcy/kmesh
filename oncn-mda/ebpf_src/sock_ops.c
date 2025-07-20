@@ -235,7 +235,7 @@ static void extract_key4_from_ops(struct bpf_sock_ops *const ops, struct sock_ke
     key->dip4 = ops->remote_ip4;
     key->dport = bpf_htons(GET_SKOPS_REMOTE_PORT(ops));
 
-    bpf_log(DEBUG, "org_sport:%u, org_dport:%u\n", ops->local_port, sk_ops->remote_port);
+    bpf_log(DEBUG, "org_sport:%u, org_dport:%u\n", ops->local_port, ops->remote_port);
     bpf_log(DEBUG, "sip:%u, sport:%u\n", key->sip4, key->sport);
     bpf_log(DEBUG, "dip:%u, dport:%u\n", key->dip4, key->dport);
 

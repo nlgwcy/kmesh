@@ -400,7 +400,7 @@ static void clean_ops_map(struct bpf_sock_ops *const skops)
 SEC("sockops")
 int SOCK_OPS_NAME(struct bpf_sock_ops *const skops)
 {
-    if (skops->family != AF_INET)
+    if (skops->family != AF_INET && skops->family != AF_INET6)
         return 0;
 
     switch (skops->op) {

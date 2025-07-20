@@ -361,8 +361,11 @@ static void passive_ops_ipv4(struct bpf_sock_ops *const skops)
 
     if (bpf_map_update_elem(&SOCK_OPS_PROXY_MAP_NAME, &peer_key, &key, BPF_ANY))
         goto err;
+
+    bpf_log(INFO, "passive_ops_ipv4 ok(sip:%u, sport:%u, dport:%u)\n", key.sip4, key.sport, key.dport);
     return;
 err:
+    bpf_log(ERROR, "passive_ops_ipv4 failed(sip:%u, sport:%u, dport:%u)\n", key.sip4, key.sport, key.dport);
     (void)clean_ops(&peer_key);
     (void)clean_ops(&key);
 

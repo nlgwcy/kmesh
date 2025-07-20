@@ -14,7 +14,7 @@
  * and sidecar containers. The bpf_sk_original_addr auxiliary function is
  * used to obtain the original destination address.
  */
-#define MDA_NAT_ACCEL 1
+#define MDA_NAT_ACCEL 0
 
 /* supports acceleration function filtering based on GID and UID.
  * That is, the GID or UID corresponding to the process to be accelerated
@@ -22,7 +22,7 @@
  * auxiliary function is used to obtain the GID and UID of the current
  * process.
  */
-#define MDA_GID_UID_FILTER 1
+#define MDA_GID_UID_FILTER 0
 
 /*
  * openEuler-23.03 is an innovative version of openEuler, in the early time, we

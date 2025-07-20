@@ -20,7 +20,7 @@ enum bpf_loglevel {
     BPF_LOG_DEBUG,
 };
 
-#define BPF_LOGLEVEL BPF_LOG_ERROR
+#define BPF_LOGLEVEL BPF_LOG_DEBUG
 
 #if OE_23_03
 #define GET_SKOPS_REMOTE_PORT(sk_ops) (__u16)((sk_ops)->remote_port)

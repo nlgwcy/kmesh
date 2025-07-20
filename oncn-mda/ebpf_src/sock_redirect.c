@@ -18,6 +18,8 @@ int SOCK_REDIRECT_NAME(struct sk_msg_md *const msg)
     set_netns_cookie((void *)msg, &key);
 #endif
 
+    bpf_log(DEBUG, "sock redirect: sip:%u, sport:%u\n", key.sip4, key.sport);
+    bpf_log(DEBUG, "sock redirect: dip:%u, dport:%u\n", key.dip4, key.dport);
     redir_key = bpf_map_lookup_elem(&SOCK_OPS_PROXY_MAP_NAME, &key);
     if (redir_key != NULL) {
         ret = bpf_msg_redirect_hash(msg, &SOCK_OPS_MAP_NAME, redir_key, BPF_F_INGRESS);
@@ -28,6 +30,8 @@ int SOCK_REDIRECT_NAME(struct sk_msg_md *const msg)
             // If you connect to the peer machine, you do end up in this branch
             bpf_log(INFO, "no such socket, may be peer socket on another machine\n");
         }
+    } else {
+        bpf_log(ERROR, "sock redirect: get sock ops proxy failed\n");
     }
 
     return SK_PASS;

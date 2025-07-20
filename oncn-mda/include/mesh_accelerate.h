@@ -40,8 +40,7 @@ enum bpf_loglevel {
 
 #define bpf_log(l, f, ...)                                                                                             \
     do {                                                                                                               \
-        if (BPF_LOG_##l <= BPF_LOGLEVEL)                                                                               \
-            bpf_printk("[oncn-mda " #l "] " f "", ##__VA_ARGS__);                                                      \
+            bpf_printk("[oncn-mda " #l "] " f "F", ##__VA_ARGS__);                                                      \
     } while (0)
 
 #ifndef force_read

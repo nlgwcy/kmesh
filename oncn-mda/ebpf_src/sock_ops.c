@@ -231,9 +231,9 @@ static void extract_key4_from_ops(struct bpf_sock_ops *const ops, struct sock_ke
      * optimized to think that only 16-bit data needs to be read here, but most kernels do not support this,
      * causing the BPF validator to fail.
      */
-    key->sport = bpf_htons(GET_SKOPS_LOCAL_PORT(ops));
+    key->sport = GET_SKOPS_LOCAL_PORT(ops);
     key->dip4 = ops->remote_ip4;
-    key->dport = GET_SKOPS_REMOTE_PORT(ops);
+    key->dport = bpf_htons(GET_SKOPS_REMOTE_PORT(ops));
 
     bpf_log(DEBUG, "sip:%u, sport:%u\n", key->sip4, key->sport);
     bpf_log(DEBUG, "dip:%u, dport:%u\n", key->dip4, key->dport);
